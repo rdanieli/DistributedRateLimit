@@ -59,4 +59,4 @@ Fixed 60-second windows aligned to epoch minutes. The window ID is embedded in t
 mvn test
 ```
 
-Requires Java 11+.
+Requires Java 21+.

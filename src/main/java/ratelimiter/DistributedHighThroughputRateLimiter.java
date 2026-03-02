@@ -63,11 +63,8 @@ public class DistributedHighThroughputRateLimiter {
         this.flushIntervalMs = flushIntervalMs;
         this.states = new ConcurrentHashMap<>();
 
-        this.cleanup = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "ratelimiter-cleanup");
-            t.setDaemon(true);
-            return t;
-        });
+        this.cleanup = Executors.newSingleThreadScheduledExecutor(
+                Thread.ofPlatform().daemon().name("ratelimiter-cleanup").factory());
         cleanup.scheduleAtFixedRate(this::evictExpired, 120, 120, TimeUnit.SECONDS);
     }
 

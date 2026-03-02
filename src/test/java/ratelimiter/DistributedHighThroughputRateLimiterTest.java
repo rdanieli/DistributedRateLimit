@@ -42,9 +42,7 @@ class DistributedHighThroughputRateLimiterTest {
     static class FailingStore extends DistributedKeyValueStore {
         @Override
         public CompletableFuture<Integer> incrementByAndExpire(String key, int delta, int expSec) {
-            CompletableFuture<Integer> f = new CompletableFuture<>();
-            f.completeExceptionally(new RuntimeException("store down"));
-            return f;
+            return CompletableFuture.failedFuture(new RuntimeException("store down"));
         }
     }
 
@@ -134,29 +132,29 @@ class DistributedHighThroughputRateLimiterTest {
         int limit = 500;
         int threads = 10;
         int perThread = 200;
-        AtomicInteger allowed = new AtomicInteger(0);
-        ExecutorService pool = Executors.newFixedThreadPool(threads);
-        CountDownLatch go = new CountDownLatch(1);
-        CountDownLatch done = new CountDownLatch(threads);
+        var allowed = new AtomicInteger(0);
+        var go = new CountDownLatch(1);
+        var done = new CountDownLatch(threads);
 
-        for (int t = 0; t < threads; t++) {
-            pool.submit(() -> {
-                try {
-                    go.await();
-                    for (int i = 0; i < perThread; i++) {
-                        if (limiter.isAllowed("k", limit).get()) allowed.incrementAndGet();
+        try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int t = 0; t < threads; t++) {
+                pool.submit(() -> {
+                    try {
+                        go.await();
+                        for (int i = 0; i < perThread; i++) {
+                            if (limiter.isAllowed("k", limit).get()) allowed.incrementAndGet();
+                        }
+                    } catch (Exception e) {
+                        fail(e);
+                    } finally {
+                        done.countDown();
                     }
-                } catch (Exception e) {
-                    fail(e);
-                } finally {
-                    done.countDown();
-                }
-            });
-        }
+                });
+            }
 
-        go.countDown();
-        assertTrue(done.await(10, TimeUnit.SECONDS));
-        pool.shutdown();
+            go.countDown();
+            assertTrue(done.await(10, TimeUnit.SECONDS));
+        }
 
         assertTrue(allowed.get() >= limit, "at least limit should pass, got " + allowed.get());
         assertTrue(store.calls.get() < threads * perThread, "calls should be batched");
